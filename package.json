@@ -1,0 +1,17 @@
+{
+  "name": "spout",
+  "version": "1.0.0",
+  "description": "Video Conferencing solution using webRTC",
+  "main": "index.js",
+  "scripts": {
+    "test": "test"
+  },
+  "author": "vpotharaju",
+  "license": "ISC",
+  "dependencies": {
+    "express": "^4.17.1",
+    "node-media-server": "^2.1.8",
+    "ws": "^7.3.0",
+    "wscat": "^4.0.0"
+  }
+}
