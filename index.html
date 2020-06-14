@@ -7,16 +7,261 @@
 	
       <div> 
          <input type = "text" id = "loginInput" /> 
-         <button id = "loginBtn">Login</button> 
+         <button id = "loginBtn" onclick="setUser()">Create or Login</button> 
       </div> 
-	
+      
+      <div id="container"></div>
+      
       <div> 
-         <input type = "text" id = "otherUsernameInput" />
-         <button id = "connectToOtherUsernameBtn">Establish connection</button> 
+         <input type = "text" id = "otherUsernameInput"/>
       </div> 
-		
-      <script src = "client.js"></script>
+
+      <button id = "clearBtn" onclick="clearUsers()">Clear Users</button> 
+      
+      <video id="localVideo" autoplay playsinline></video>
+      <video id="remoteVideo" autoplay playsinline></video>
+
+      <div>
+         <button id="startButton" onclick="startAction()">Start</button>
+         <button id="callButton" onclick="callAction()">Call</button>
+         <button id="hangupButton">Hang Up</button>
+      </div>
+            <!-- <script src = "client.js"></script> -->
 		
    </body>
-	
+   <script src = "/socket.io/socket.io.js"></script>
+   <script>
+      var socket = io();
+      const localVideo = document.getElementById('localVideo');
+      const remoteVideo = document.getElementById('remoteVideo');
+      const startButton = document.getElementById('startButton');
+      const callButton = document.getElementById('callButton');
+      const hangupButton = document.getElementById('hangupButton');
+      var container = document.getElementById('container');
+      const mediaStreamConstraints = { video: true};
+      var fromUser = null;
+      var toUser = null;
+      var requestedUser = null;
+      var configuration = { 
+         "iceServers": [{ "url": "stun:stun.1.google.com:19302" }] 
+      };
+      var webRTCObj = new webkitRTCPeerConnection(configuration);
+      webRTCObj.addEventListener('icecandidate', function(event){
+         console.log("onIceCandidate");
+         console.log(event);
+         const iceCandidate = event.candidate;
+         toUser = document.getElementById("otherUsernameInput").value;
+         console.log(toUser);
+         console.log(requestedUser);
+         if(toUser == null || toUser == '') {
+            toUser = requestedUser;
+         }
+         sendData({"type": "iceCandidate", "toUser": toUser, "candidate": iceCandidate});
+      });
+      webRTCObj.addEventListener('iceconnectionstatechange', function(event){
+         console.log("local iceCandState change");
+         console.log(event);
+      });
+      webRTCObj.addEventListener('addstream', function(event){
+         const mediaStream = event.stream;
+         remoteVideo.srcObject = mediaStream;
+         remoteStream = mediaStream;
+      });
+      var localStream;
+      var remoteStream;
+
+      callButton.disabled = true;
+      hangupButton.disabled = true;
+
+      function setUser(){
+         fromUser = document.getElementById("loginInput").value;
+         sendData({"type": "setUser"});
+      }
+
+      function startAction() {
+         startButton.disabled = true;
+         navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+           .then(function(mediaStream){
+            localVideo.srcObject = mediaStream;
+            localStream = mediaStream;
+            callButton.disabled = false;
+           }).catch(function(error){
+              console.log(error);
+         });
+         console.log(webRTCObj);
+      }
+
+      function callAction() {
+         if(fromUser == null) {
+            alert("From User not set");
+            return;
+         }
+         callButton.disabled = true;
+         hangupButton.disabled = false;
+         webRTCObj.addStream(localStream);
+         console.log(webRTCObj);
+         makeOffer();
+      }   
+
+      function sendData(data){
+         data.fromUser = fromUser;
+         socket.emit("message", data);
+      }
+
+      socket.on("message", function(data){
+         switch(data.type){
+            case "error":
+               alert(data.error);
+               break;
+            case "userSet":
+               container.innerHTML = data.users;
+               alert(data.message);
+               break;
+            case "onOffer":
+               onOffer(data);
+               break; 
+            case "onAnswer":
+               onAnswer(data);
+            case "onIceCandidate":
+               onIceCandidate(data);
+         }    
+      });
+
+      function onIceCandidate(data){
+         requestedUser = data.fromUser;
+         webRTCObj.addIceCandidate(data.candidate);
+      }
+      
+      function makeOffer(){
+         console.log("makeOffer");
+         webRTCObj.createOffer(function(offer){
+            webRTCObj.setLocalDescription(offer);
+            const toUser = document.getElementById("otherUsernameInput").value;
+            sendData({"type": "makeOffer", "offer": offer, "toUser": toUser});
+            console.log(webRTCObj);
+         }, function(error){
+            console.log(error);
+         });
+      }
+
+      function makeAnswer(){
+         console.log("makeAnswer");
+         webRTCObj.createAnswer(function(answer){
+            webRTCObj.setLocalDescription(answer);
+            sendData({"type":"makeAnswer", "answer": answer, "toUser": requestedUser});
+            console.log(webRTCObj);
+         }, function(error){
+            console.log(error);
+         });
+      }
+      function onOffer(data){
+         console.log("onOffer");
+         requestedUser = data.fromUser;
+         webRTCObj.setRemoteDescription(new RTCSessionDescription(data.offer));
+         makeAnswer();
+         console.log(webRTCObj);
+      }
+      
+      function onAnswer(data){
+         console.log("onAnswer");
+         webRTCObj.setRemoteDescription(new RTCSessionDescription(data.answer));
+         console.log(webRTCObj);
+      };
+   </script>
+   <!-- <script>
+      var fomuser;
+      var socket = io();
+      
+      const localVideo = document.getElementById('localVideo');
+      const remoteVideo = document.getElementById('remoteVideo');
+      const startButton = document.getElementById('startButton');
+      const callButton = document.getElementById('callButton');
+      const hangupButton = document.getElementById('hangupButton');
+
+      const mediaStreamConstraints = { video: true};
+
+      var localStream;
+      var remoteStream;
+
+      callButton.disabled = true;
+      hangupButton.disabled = true;
+
+      function startAction() {
+         startButton.disabled = true;
+         navigator.mediaDevices.getUserMedia(mediaStreamConstraints)
+           .then(function(mediaStream){
+            localVideo.srcObject = mediaStream;
+            localStream = mediaStream;
+            callButton.disabled = false;
+           }).catch(function(error){
+              console.log(error);
+           });
+      }
+
+      function callAction() {
+         callButton.disabled = true;
+         hangupButton.disabled = false;
+         webRTCObj.addEventListener('addStream', function(event){
+            remoteVideo.srcObject = event.stream;
+            remoteStream = event.stream;
+         });
+         webRTCObj.addStream(localStream);
+      }
+
+      var configuration = { 
+         "iceServers": [{ "url": "stun:stun.1.google.com:19302" }] 
+      };
+      var webRTCObj = new webkitRTCPeerConnection(configuration);
+      webRTCObj.addEventListener('icecandidate', function(event){
+         const peerConnection = event.target;
+         const iceCandidate = event.candidate;
+         console.log(12);
+      });
+      function setUser() {
+         socket.emit('setUser', document.getElementById('loginInput').value);
+      };
+      socket.on('userExists', function(userName){
+         alert(userName + "already exisits. Please choose different username");
+      });
+      socket.on('userSet', function(data){
+         fromUser = document.getElementById('loginInput').value;
+         alert("user set. choose a user and establish connection");
+         document.getElementById('container').innerHTML = data;
+      });
+      function clearUsers() {
+         socket.emit('clear');
+      };
+      function establishConn() {
+         var otherUserName = document.getElementById('otherUsernameInput').value;
+         console.log(otherUserName);
+         webRTCObj.createOffer(function(offer){
+            webRTCObj.setLocalDescription(offer);
+            data = {"offer" : offer, "fromUser" : fromUser, "toUser" : otherUserName};
+            socket.emit('makeOffer', data);
+         }, function(data){
+            console.log(data);
+         });
+      }
+      socket.on('onOffer', function(data){
+         var otherUser = data.fromUser;
+         alert(otherUser + " wants to connect with you. Agree?");
+         webRTCObj.setRemoteDescription(new RTCSessionDescription(data.offer));
+         webRTCObj.createAnswer(function(answer){
+            webRTCObj.setLocalDescription(answer);
+            var replyData = {"answer" : answer, "fromUser" : fromUser, "toUser" : otherUser};
+            socket.emit('makeAnswer', replyData);
+         }, function (data){
+            console.log(data);
+         });
+      });
+      socket.on('onAnswer', function(data){
+         webRTCObj.setRemoteDescription(new RTCSessionDescription(data.answer));
+         alert("webRTC conn established");
+      });
+      socket.on('failed', function(data){
+         alert(data);   
+      }); 
+		
+      
+   </script> -->
 </html>
